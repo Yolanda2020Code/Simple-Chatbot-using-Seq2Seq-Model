@@ -1,0 +1,42 @@
+import numpy as np
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, LSTM, Dense
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+# Dummy dataset for demonstration
+input_texts = ['hello', 'how are you', 'what is your name']
+target_texts = ['hi', 'i am fine', 'i am a bot']
+
+# Tokenization
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(input_texts + target_texts)
+input_sequences = tokenizer.texts_to_sequences(input_texts)
+target_sequences = tokenizer.texts_to_sequences(target_texts)
+
+vocab_size = len(tokenizer.word_index) + 1
+max_len = max([len(seq) for seq in input_sequences])
+
+# Padding sequences
+encoder_input_data = pad_sequences(input_sequences, maxlen=max_len, padding='post')
+decoder_input_data = pad_sequences(target_sequences, maxlen=max_len, padding='post')
+decoder_output_data = np.zeros_like(decoder_input_data)
+decoder_output_data[:, :-1] = decoder_input_data[:, 1:]
+
+# Model architecture
+encoder_inputs = Input(shape=(max_len,))
+encoder_embedding = Embedding(vocab_size, 256)(encoder_inputs)
+encoder_outputs, state_h, state_c = LSTM(256, return_state=True)(encoder_embedding)
+encoder_states = [state_h, state_c]
+
+decoder_inputs = Input(shape=(max_len,))
+decoder_embedding = Embedding(vocab_size, 256)(decoder_inputs)
+decoder_lstm = LSTM(256, return_sequences=True, return_state=True)
+decoder_outputs, _, _ = decoder_lstm(decoder_embedding, initial_state=encoder_states)
+decoder_dense = Dense(vocab_size, activation='softmax')
+decoder_outputs = decoder_dense(decoder_outputs)
+
+model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
+
+model.compile(optimizer='rmsprop', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.fit([encoder_input_data, decoder_input_data], np.expand_dims(decoder_output_data, -1), epochs=50)
